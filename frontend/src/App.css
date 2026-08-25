@@ -1,0 +1,7 @@
+.container {
+    minHeight: '100vh';
+    background: '#F7F8FA';
+    fontFamily: "'Inter', system-ui, sans-serif";
+    WebkitFontSmoothing: 'antialiased';
+}
+
