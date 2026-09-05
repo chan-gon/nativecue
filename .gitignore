@@ -1,0 +1,20 @@
+# Backend - Python / FastAPI
+
+/backend/.venv/
+/backend/.env
+/backend/.env.*
+!/backend/.env.example
+/backend/__pycache__/
+
+# Frontend - React(TS)
+
+/frontend/node_modules/
+/frontend/dist/
+/frontend/build/
+/frontend/.env
+/frontend/.env.*
+!/frontend/.env.example
+
+# IDE
+
+.idea/
