@@ -13,6 +13,11 @@ type NaturalSpeechCueType =
   | 'stress'
   | 'linking'
   | 'reduction'
+  | 'rhythm_group'
+  | 'liaison'
+  | 'enchainement'
+  | 'elision'
+  | 'schwa'
 
 interface AnalyzeResponse {
   text: string

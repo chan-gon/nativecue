@@ -8,11 +8,16 @@ from pydantic import BaseModel
 from database import get_connection
 from psycopg.types.json import Jsonb
 
+from prompts import (
+    PROMPT_VERSIONS,
+    EN_SYSTEM_PROMPT,
+    FR_SYSTEM_PROMPT,
+)
+
 from analyzer import (
     normalize_text,
     tokenize_words,
 )
-
 
 load_dotenv()
 
@@ -28,60 +33,29 @@ MODEL = os.getenv(
     "gpt-5.4-mini",
 )
 
+NaturalSpeechCueType = Literal[
+    # English
+    "stress",
+    "linking",
+    "reduction",
+
+    # French
+    "rhythm_group",
+    "liaison",
+    "enchainement",
+    "elision",
+    "schwa",
+]
 
 class NaturalSpeechCue(BaseModel):
-    type: Literal[
-        "stress",
-        "linking",
-        "reduction",
-    ]
-
+    type: NaturalSpeechCueType
     start_word: int
     end_word: int
     display: str
     explanation: str
 
-
 class NaturalSpeechOutput(BaseModel):
     cues: list[NaturalSpeechCue]
-
-PROMPT_VERSION = "1.0"
-
-SYSTEM_PROMPT = """
-You are a spoken-language pronunciation coach for English learners.
-
-Your task is to identify only useful natural-speech cues
-in the provided sentence.
-
-Analyze these categories:
-
-1. stress
-   Identify words that commonly carry prominent sentence stress
-   in a neutral, context-free reading.
-
-2. linking
-   Identify adjacent words that commonly flow together
-   in natural speech.
-
-3. reduction
-   Identify common conversational reductions or contractions
-   relevant to the exact input sentence.
-
-Rules:
-
-- Preserve the original sentence and word order.
-- Word indexes are zero-based.
-- start_word and end_word must refer to the supplied word list.
-- Do not invent words.
-- Do not mark every possible phonetic phenomenon.
-- Return only cues useful to a language learner.
-- Prefer a small number of high-confidence cues.
-- Keep explanations short and practical.
-- Treat sentence stress as a common neutral reading,
-  not the only correct reading.
-- If a category has no useful cue, omit it.
-""".strip()
-
 
 def build_user_prompt(
     text: str,
@@ -116,6 +90,14 @@ def create_cache_key(
 
     return hashlib.sha256(source.encode("utf-8")).hexdigest()
 
+def get_system_prompt(language: str) -> str:
+    if language == "en":
+        return EN_SYSTEM_PROMPT
+
+    if language == "fr":
+        return FR_SYSTEM_PROMPT
+
+    raise ValueError(f"Unsupported Natural Speech language: {language}")
 
 def call_openai(
     text: str,
@@ -125,7 +107,7 @@ def call_openai(
 
     response = client.responses.parse(
         model=MODEL,
-        instructions=SYSTEM_PROMPT,
+        instructions=get_system_prompt(language),
         input=build_user_prompt(
             text=text,
             words=words,
@@ -231,7 +213,7 @@ def analyze_natural_speech(
         text=text,
         language=language,
         model=MODEL,
-        prompt_version=PROMPT_VERSION,
+        prompt_version=PROMPT_VERSIONS[language],
     )
 
     cached = find_cached_analysis(
@@ -265,7 +247,7 @@ def analyze_natural_speech(
         language=language,
         normalized_text=text,
         analysis=analysis,
-        prompt_version=PROMPT_VERSION,
+        prompt_version=PROMPT_VERSIONS[language],
         model=MODEL,
     )
 
