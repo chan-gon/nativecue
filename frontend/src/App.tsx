@@ -245,20 +245,83 @@ function App() {
     setDeckCount(count => count + 1)
   }
 
-  const stressCues =
-  naturalSpeech?.cues.filter(
-    cue => cue.type === 'stress',
-  ) ?? []
+  const cueMeta: Record<NaturalSpeechCueType, { label: string; hint: string }> = {
+    stress: {
+      label: 'Stress',
+      hint: 'Give these words more prominence.',
+    },
+    linking: {
+      label: 'Linking',
+      hint: 'Let these words flow together.',
+    },
+    reduction: {
+      label: 'Reduction',
+      hint: 'Use the common reduced spoken form.',
+    },
+    rhythm_group: {
+      label: 'Rhythm group',
+      hint: 'Practice this sequence as one smooth chunk.',
+    },
+    liaison: {
+      label: 'Liaison',
+      hint: 'Pronounce the normally silent consonant into the next word.',
+    },
+    enchainement: {
+      label: 'Enchaînement',
+      hint: 'Carry the already-pronounced final consonant into the next word.',
+    },
+    elision: {
+      label: 'Elision',
+      hint: 'Keep the written vowel omission connected and compact.',
+    },
+    schwa: {
+      label: 'Schwa',
+      hint: 'This unstressed e may weaken or disappear in natural speech.',
+    },
+  }
 
-  const reductionCues =
-    naturalSpeech?.cues.filter(
-      cue => cue.type === 'reduction',
-    ) ?? []
+  const cueOrder: NaturalSpeechCueType[] =
+    activeLang === 'EN'
+      ? ['stress', 'reduction', 'linking']
+      : ['rhythm_group', 'liaison', 'enchainement', 'elision', 'schwa']
 
-  const linkingCues =
-    naturalSpeech?.cues.filter(
-      cue => cue.type === 'linking',
-    ) ?? []
+  const cuesByType = cueOrder
+    .map(type => ({
+      type,
+      cues: naturalSpeech?.cues.filter(cue => cue.type === type) ?? [],
+    }))
+    .filter(group => group.cues.length > 0)
+
+  const hasCueAtWord = (type: NaturalSpeechCueType, wordIndex: number) =>
+    naturalSpeech?.cues.some(
+      cue =>
+        cue.type === type &&
+        wordIndex >= cue.start_word &&
+        wordIndex <= cue.end_word,
+    ) ?? false
+
+  const getBoundaryCue = (wordIndex: number) =>
+    naturalSpeech?.cues.find(
+      cue =>
+        ['linking', 'liaison', 'enchainement'].includes(cue.type) &&
+        cue.end_word === wordIndex + 1 &&
+        cue.start_word <= wordIndex,
+    )
+
+  const getRhythmGroupPosition = (wordIndex: number) => {
+    const cue = naturalSpeech?.cues.find(
+      item =>
+        item.type === 'rhythm_group' &&
+        wordIndex >= item.start_word &&
+        wordIndex <= item.end_word,
+    )
+
+    if (!cue) return ''
+    if (cue.start_word === cue.end_word) return 'rhythm-single'
+    if (wordIndex === cue.start_word) return 'rhythm-start'
+    if (wordIndex === cue.end_word) return 'rhythm-end'
+    return 'rhythm-middle'
+  }
 
   return (
     <div className="app">
@@ -500,107 +563,109 @@ function App() {
 
               {!isNaturalSpeechLoading && naturalSpeech && (
                 <div className="natural-content">
+                  <div className="natural-overview">
+                    <div>
+                      <div className="natural-overview-label">How it flows</div>
+                      <p className="natural-overview-copy">
+                        Read the sentence as connected speech, then review each cue below.
+                      </p>
+                    </div>
 
-                  <div className="natural-sentence">
+                    <div className="natural-legend" aria-label="Natural speech legend">
+                      {cuesByType.map(({ type }) => (
+                        <span
+                          className={`natural-legend-item cue-${type}`}
+                          key={type}
+                        >
+                          <span className="natural-legend-dot" />
+                          {cueMeta[type].label}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="natural-sentence" aria-label="Natural speech annotated sentence">
                     {sentence?.words.map((word, index) => {
-                      const isStress = stressCues.some(
-                        cue =>
-                          index >= cue.start_word &&
-                          index <= cue.end_word,
-                      )
+                      const boundaryCue = getBoundaryCue(index)
+                      const rhythmPosition = getRhythmGroupPosition(index)
 
-                      const isReduction = reductionCues.some(
-                        cue =>
-                          index >= cue.start_word &&
-                          index <= cue.end_word,
-                      )
+                      const wordClasses = [
+                        'natural-word',
+                        hasCueAtWord('stress', index) ? 'cue-stress' : '',
+                        hasCueAtWord('reduction', index) ? 'cue-reduction' : '',
+                        hasCueAtWord('elision', index) ? 'cue-elision' : '',
+                        hasCueAtWord('schwa', index) ? 'cue-schwa' : '',
+                        rhythmPosition,
+                      ]
+                        .filter(Boolean)
+                        .join(' ')
 
                       return (
-                        <span
-                          key={`${word.text}-${index}`}
-                          className={[
-                            'natural-word',
-                            isStress ? 'stress' : '',
-                            isReduction ? 'reduction' : '',
-                          ]
-                            .filter(Boolean)
-                            .join(' ')}
-                        >
-                          {word.text}
+                        <span className="natural-token" key={`${word.text}-${index}`}>
+                          <span className={wordClasses}>{word.text}</span>
+
+                          {boundaryCue && (
+                            <span
+                              className={`speech-boundary cue-${boundaryCue.type}`}
+                              title={cueMeta[boundaryCue.type].label}
+                              aria-label={cueMeta[boundaryCue.type].label}
+                            >
+                              <span className="speech-boundary-line" />
+                              <span className="speech-boundary-symbol">‿</span>
+                            </span>
+                          )}
                         </span>
                       )
                     })}
                   </div>
 
-                  {reductionCues.length > 0 && (
-                    <div className="cue-group">
-                      <div className="cue-group-title">
-                        Reduction
-                      </div>
-
-                      <div className="cue-list">
-                        {reductionCues.map((cue, index) => (
-                          <div
-                            className="cue-item"
-                            key={`reduction-${index}`}
-                          >
-                            <div className="cue-display">
-                              {cue.display}
+                  <div className="natural-cue-groups">
+                    {cuesByType.map(({ type, cues }) => (
+                      <section className={`cue-group cue-${type}`} key={type}>
+                        <div className="cue-group-heading">
+                          <div>
+                            <div className="cue-group-title">
+                              <span className="cue-group-marker" />
+                              {cueMeta[type].label}
                             </div>
-
-                            <div className="cue-explanation">
-                              {cue.explanation}
-                            </div>
+                            <div className="cue-group-hint">{cueMeta[type].hint}</div>
                           </div>
-                        ))}
+                          <span className="cue-group-count">{cues.length}</span>
+                        </div>
+
+                        <div className="cue-list">
+                          {cues.map((cue, index) => (
+                            <article className="cue-item" key={`${type}-${index}`}>
+                              <div className="cue-display-row">
+                                <div
+                                  className={`cue-display ${type === 'stress' ? 'stress-text' : ''}`}
+                                >
+                                  {['linking', 'liaison', 'enchainement'].includes(type)
+                                    ? cue.display.replace(' ', ' ‿ ')
+                                    : cue.display}
+                                </div>
+                                <span className="cue-word-range">
+                                  {cue.start_word === cue.end_word
+                                    ? `word ${cue.start_word + 1}`
+                                    : `words ${cue.start_word + 1}–${cue.end_word + 1}`}
+                                </span>
+                              </div>
+
+                              <div className="cue-explanation">
+                                {cue.explanation}
+                              </div>
+                            </article>
+                          ))}
+                        </div>
+                      </section>
+                    ))}
+
+                    {cuesByType.length === 0 && (
+                      <div className="natural-empty">
+                        No high-confidence natural-speech cues were found for this sentence.
                       </div>
-                    </div>
-                  )}
-
-                  {stressCues.length > 0 && (
-                    <div className="cue-group">
-                      <div className="cue-group-title">
-                        Stress
-                      </div>
-
-                      <div className="cue-list">
-                        {stressCues.map((cue, index) => (
-                          <div
-                            className="cue-item"
-                            key={`stress-${index}`}
-                          >
-                            <div className="cue-display stress-text">
-                              {cue.display}
-                            </div>
-
-                            <div className="cue-explanation">
-                              {cue.explanation}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {linkingCues.length > 0 && (
-                    <div className="cue-group">
-                      <div className="cue-group-title">
-                        Linking
-                      </div>
-
-                      <div className="linking-list">
-                        {linkingCues.map((cue, index) => (
-                          <span
-                            className="linking-item"
-                            key={`linking-${index}`}
-                          >
-                            {cue.display.replace(' ', ' ‿ ')}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
+                    )}
+                  </div>
                 </div>
               )}
             </section>
