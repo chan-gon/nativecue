@@ -65,10 +65,6 @@ function App() {
   const [activeWordIndex, setActiveWordIndex] = useState<number | null>(null)
   const [speed, setSpeed] = useState<'1.0x' | '0.8x' | '0.6x' | '0.4x' | '0.2x'>('1.0x')
 
-
-  const [saved, setSaved] = useState(false)
-  const [deckCount, setDeckCount] = useState(0)
-
   const resetAppState = () => {
     window.speechSynthesis.cancel()
 
@@ -82,8 +78,6 @@ function App() {
     setIsNativePlaying(false)
     setActiveWordIndex(null)
     setSpeed('1.0x')
-    setSaved(false)
-    setDeckCount(0)
 
     window.history.replaceState({}, '', '/')
   }
@@ -125,7 +119,6 @@ function App() {
       })
 
       setActiveWordIndex(null)
-      setSaved(false)
     } catch (err) {
       console.error(err)
       setSentence(null)
@@ -237,12 +230,6 @@ function App() {
               ? '0.2x'
               : '1.0x',
     )
-  }
-
-  const handleSave = () => {
-    if (saved) return
-    setSaved(true)
-    setDeckCount(count => count + 1)
   }
 
   const cueMeta: Record<NaturalSpeechCueType, { label: string; hint: string }> = {
@@ -367,16 +354,12 @@ function App() {
                 onClick={() => setActiveLang(language)}
               >
                 <span className="nav-language-code">{language}</span>
-                {/* <span className="nav-language-name">
+                <span className="nav-language-name">
                   {language === 'EN' ? 'English' : 'Français'}
-                </span> */}
+                </span>
               </button>
             ))}
           </div>
-
-          <button className={`deck-button ${deckCount > 0 ? 'has-items' : ''}`}>
-            My Speech Deck ({deckCount})
-          </button>
         </div>
       </nav>
 
@@ -386,9 +369,6 @@ function App() {
             <div className="script-panel">
               <div className="script-heading">
                 <div className="eyebrow">SCRIPT</div>
-                {/* <span className="script-language">
-                  {activeLang === 'EN' ? 'English' : 'Française'}
-                </span> */}
                 <div>
                   <span className="character-count">({inputText.length})/{MAX_SCRIPT_LENGTH}</span>
                 </div>
@@ -415,7 +395,6 @@ function App() {
               <div className="input-actions">
                 <div className="input-meta">
                   <span className="input-hint">Enter to analyze · Shift + Enter for a new line</span>
-                  {/* <span className="character-count">({inputText.length})/{MAX_SCRIPT_LENGTH}</span> */}
                 </div>
 
                 <button
@@ -424,7 +403,6 @@ function App() {
                   disabled={!inputText.trim() || isAnalyzing}
                 >
                   <span>{isAnalyzing ? 'Analyzing...' : 'Pronounce'}</span>
-                  {/* {!isAnalyzing && <span aria-hidden="true">→</span>} */}
                 </button>
               </div>
             </div>
@@ -442,18 +420,9 @@ function App() {
                   <div className="studio-count">
                     {sentence.words.length} words · {activeLang}
                   </div>
-
-                {/* <button
-                  className={`control-button compact ${isNativePlaying ? 'active' : ''}`}
-                  onClick={handlePlaySentence}
-                >
-                  {isNativePlaying ? 'Stop' : 'Play'}
-                </button> */}
               </div>
 
               <div className="sentence-analysis">
-                {/* <div className="sentence-text">{sentence.text}</div>
-                <div className="sentence-ipa">{sentence.ipa}</div> */}
                   <div className="word-list">
                   {sentence.words.map((word, index) => (
                     <button
@@ -469,44 +438,8 @@ function App() {
                 </div>
               </div>
 
-              {/* <div className="word-list">
-                {sentence.words.map((word, index) => (
-                  <button
-                    key={`${word.text}-${index}`}
-                    className={`word-card ${activeWordIndex === index ? 'active' : ''}`}
-                    onClick={() => handleWordClick(word, index)}
-                    type="button"
-                  >
-                    <span className="word-text">{word.text}</span>
-                    <span className="word-ipa">{word.ipa}</span>
-                  </button>
-                ))}
-              </div> */}
-
               <div className="controls-row">
-                {/* <button
-                  className={`control-button compact ${isNativePlaying ? 'active' : ''}`}
-                  onClick={handlePlaySentence}
-                >
-                  {isNativePlaying ? 'Stop' : 'Play'}
-                </button> */}
-
-                {/* <button
-                  className="control-button compact"
-                  onClick={cycleSpeed}
-                >
-                  {speed}
-                </button> */}
-
-                {/* <button
-                  className="save-button compact"
-                  onClick={handleSave}
-                  disabled={saved}
-                >
-                  {saved ? 'Saved' : 'Save'}
-                </button> */}
-
-                <div>
+                <div style={{display: "flex", gap:"10px"}}>
                   <button
                     className="control-button compact"
                     onClick={cycleSpeed}
@@ -564,12 +497,12 @@ function App() {
               {!isNaturalSpeechLoading && naturalSpeech && (
                 <div className="natural-content">
                   <div className="natural-overview">
-                    <div>
+                    {/* <div>
                       <div className="natural-overview-label">How it flows</div>
                       <p className="natural-overview-copy">
                         Read the sentence as connected speech, then review each cue below.
                       </p>
-                    </div>
+                    </div> */}
 
                     <div className="natural-legend" aria-label="Natural speech legend">
                       {cuesByType.map(({ type }) => (
