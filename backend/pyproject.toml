@@ -3,6 +3,26 @@ name = "backend"
 version = "0.1.0"
 requires-python = ">=3.14"
 dependencies = [
+    "en-core-web-sm",
     "fastapi[standard]>=0.141.1",
+    "fr-core-news-sm",
+    "openai>=3.15.0",
     "phonemizer>=3.4.0",
+    "psycopg[binary]>=3.3.5",
+    "pydantic>=2.13.4",
+    "python-dotenv>=1.2.3",
+    "spacy>=3.8.16",
 ]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]
+
+[tool.uv.sources]
+en-core-web-sm = { url = "https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl" }
+fr-core-news-sm = { url = "https://github.com/explosion/spacy-models/releases/download/fr_core_news_sm-3.8.0/fr_core_news_sm-3.8.0-py3-none-any.whl" }
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]

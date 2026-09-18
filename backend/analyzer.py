@@ -1,18 +1,15 @@
 import string
+import unicodedata
 
 from phonemizer import phonemize
 
 
 def normalize_text(text: str) -> str:
-    """
-    Normalize whitespace in the input text.
-
-    Example:
-        "  Can   you help me?  "
-        -> "Can you help me?"
-    """
-    return " ".join(text.split())
-
+    text = unicodedata.normalize("NFC", text)
+    text = text.replace("’", "'")
+    text = " ".join(text.split())
+    text = text.rstrip(".")
+    return text.lower()
 
 def tokenize_words(text: str) -> list[str]:
     """

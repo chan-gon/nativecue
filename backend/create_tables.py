@@ -19,6 +19,30 @@ CREATE TABLE IF NOT EXISTS natural_speech_cache (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+CREATE TABLE IF NOT EXISTS natural_speech_requests (
+    id BIGSERIAL PRIMARY KEY,
+
+    cache_key VARCHAR(64) NOT NULL,
+    language VARCHAR(10) NOT NULL,
+    normalized_text TEXT NOT NULL,
+
+    cache_hit BOOLEAN NOT NULL,
+    status VARCHAR(20) NOT NULL,
+
+    response_time_ms INTEGER,
+
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_natural_speech_requests_created_at
+    ON natural_speech_requests (created_at);
+
+CREATE INDEX IF NOT EXISTS idx_natural_speech_requests_cache_key
+    ON natural_speech_requests (cache_key);
+
+CREATE INDEX IF NOT EXISTS idx_natural_speech_requests_language
+    ON natural_speech_requests (language);
 """
 
 with psycopg.connect(DATABASE_URL) as conn:
