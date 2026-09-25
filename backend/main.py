@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Literal
 from analyzer import analyze_text
+from dictionary import DictionaryRequest, get_dictionary
 
 app = FastAPI()
 
@@ -81,3 +82,7 @@ async def translate(request: TranslateRequest):
         "source_language": request.source_language,
         "target_language": request.target_language,
     }
+
+@app.post("/dictionary")
+def dictionary(request: DictionaryRequest):
+    return get_dictionary(request)

@@ -30,8 +30,6 @@ type SectionKey =
   | 'definitions'
   | 'etymology'
   | 'examples'
-  | 'usage'
-  | 'relatedForms'
   | 'conjugation'
   | 'wordIpa'
   | 'sentenceIpa'
@@ -61,6 +59,7 @@ interface Definition {
   meaning: string
   translation?: string
   register?: string
+  examples?: Example[]
 }
 
 interface Example {
@@ -68,23 +67,10 @@ interface Example {
   translation: string
 }
 
-interface UsageNote {
-  label: string
-  value: string
-}
-
-interface RelatedForm {
-  word: string
-  part_of_speech: string
-  ipa?: string
-}
-
 interface ConjugatedForm {
   subject: string
   form: string
   ipa?: string
-  example: string
-  translation: string
 }
 
 interface ConjugationGroup {
@@ -93,12 +79,11 @@ interface ConjugationGroup {
 }
 
 interface VerbDetails {
-  regularity?: string
-  auxiliary?: string
-  transitivity?: string
-  present_participle?: string
-  past_participle?: string
   groups: ConjugationGroup[]
+  present_participle?: string
+  present_participle_ipa?: string
+  past_participle?: string
+  past_participle_ipa?: string
 }
 
 interface DictionaryEntry {
@@ -113,8 +98,6 @@ interface DictionaryEntry {
   definitions: Definition[]
   etymology?: string
   examples: Example[]
-  usage: UsageNote[]
-  related_forms: RelatedForm[]
   verb?: VerbDetails
 }
 
@@ -146,8 +129,6 @@ const DEFAULT_VISIBILITY: VisibilitySettings = {
   definitions: true,
   etymology: true,
   examples: true,
-  usage: true,
-  relatedForms: true,
   conjugation: true,
   wordIpa: true,
   sentenceIpa: true,
@@ -174,11 +155,9 @@ const FONT_STACKS: Record<FontPreset, string> = {
 
 const SECTION_LABELS: Record<SectionKey, string> = {
   translation: 'Translation',
-  definitions: 'Definitions',
+  definitions: 'Meanings',
   etymology: 'Etymology',
   examples: 'Examples',
-  usage: 'Usage and grammar',
-  relatedForms: 'Related forms',
   conjugation: 'Conjugation',
   wordIpa: 'Word-level IPA',
   sentenceIpa: 'Full-sentence IPA',
@@ -195,6 +174,104 @@ function languageLocale(language: Language) {
 function partOfSpeechLabel(value?: string) {
   if (!value) return 'word'
   return value.replaceAll('_', ' ')
+}
+
+function subjectNames(language: string): string[] {
+  return language.toLowerCase() === 'fr'
+    ? ['je', 'tu', 'il / elle / on', 'nous', 'vous', 'ils / elles']
+    : ['I', 'you', 'he / she / it', 'we', 'you', 'they']
+}
+
+// Slots preserve person AND number (including the two English "you" rows).
+function subjectSlots(subject: string, language: string): number[] {
+  const value = subject.trim().toLowerCase().replaceAll('’', "'")
+  const persons = ['first-person', 'second-person', 'third-person']
+    .map((tag, index) => value.includes(tag) ? index : -1).filter(index => index >= 0)
+  const numbers = ['singular', 'plural'].filter(tag => value.includes(tag))
+  if (persons.length && numbers.length) {
+    return numbers.flatMap(number => persons.map(person => person + (number === 'plural' ? 3 : 0)))
+  }
+  const direct: Record<string, number[]> = language.toLowerCase() === 'fr'
+    ? { je: [0], "j'": [0], tu: [1], il: [2], elle: [2], on: [2],
+        nous: [3], vous: [4], ils: [5], elles: [5],
+        'il/elle/on': [2], 'il/elle': [2], 'ils/elles': [5] }
+    : { i: [0], you: [1, 4], he: [2], she: [2], it: [2], we: [3], they: [5], 'he/she/it': [2] }
+  return direct[value.replace(/^(?:que\s+|qu')/, '').replaceAll(' ', '')] ?? []
+}
+
+function subjectLabel(subject: string, language: string): string | null {
+  const names = subjectNames(language)
+  return [...new Set(subjectSlots(subject, language).map(slot => names[slot]))].join(' / ') || null
+}
+
+function finiteConjugations(entry: DictionaryEntry | null): ConjugationGroup[] {
+  if (!entry) return []
+  const groups = new Map<string, { tense: string; subjects: Map<number, Map<string, Set<string>>> }>()
+  for (const group of entry.verb?.groups ?? []) {
+    if (/infinitive|participle|gerund|infinitif|participe|gérondif/i.test(group.tense)) continue
+    // Merge identical tag sets even if the backend returns tags in another order.
+    const key = group.tense.toLowerCase().split('·').map(tag => tag.trim()).sort().join('|')
+    const merged = groups.get(key) ?? { tense: group.tense, subjects: new Map<number, Map<string, Set<string>>>() }
+    for (const form of group.forms) {
+      const value = form.form.normalize('NFC').trim().replace(/\s+/g, ' ')
+      if (!value || !subjectLabel(form.subject, entry.language)) continue
+      for (const slot of subjectSlots(form.subject, entry.language)) {
+        const variants = merged.subjects.get(slot) ?? new Map<string, Set<string>>()
+        const ipas = variants.get(value) ?? new Set<string>()
+        if (form.ipa) ipas.add(form.ipa)
+        variants.set(value, ipas)
+        merged.subjects.set(slot, variants)
+      }
+    }
+    groups.set(key, merged)
+  }
+  const names = subjectNames(entry.language)
+  return [...groups.values()].flatMap(group => {
+    const forms = [...group.subjects.entries()]
+      .sort(([left], [right]) => left - right)
+      .map(([slot, variants]) => ({
+        subject: names[slot],
+        form: [...variants.keys()].join(', '),
+        ipa: [...variants.values()].flatMap(ipa => [...ipa]).join(' / '),
+      }))
+    return forms.length ? [{ tense: group.tense, forms }] : []
+  })
+}
+
+interface ConjugationSection {
+  mood: string
+  groups: Array<ConjugationGroup & { label: string; order: number }>
+}
+
+function organizeConjugations(entry: DictionaryEntry | null): ConjugationSection[] {
+  const sections = new Map<string, ConjugationSection>()
+  for (const group of finiteConjugations(entry)) {
+    const tags = new Set(group.tense.toLowerCase().split('·').map(tag => tag.trim()))
+    const mood = tags.has('indicative') ? 'Indicative'
+      : tags.has('subjunctive') ? 'Subjunctive'
+      : tags.has('conditional') ? 'Conditional'
+      : tags.has('imperative') ? 'Imperative' : 'Other forms'
+    const label = tags.has('anterior') ? 'Passé antérieur'
+      : tags.has('historic') && tags.has('past') ? 'Passé simple'
+      : tags.has('pluperfect') ? 'Plus-que-parfait'
+      : tags.has('future') && tags.has('perfect') ? 'Futur antérieur'
+      : tags.has('conditional') && tags.has('perfect') ? 'Passé'
+      : tags.has('imperfect') ? 'Imparfait'
+      : tags.has('future') ? 'Futur simple'
+      : tags.has('perfect') && tags.has('present') ? 'Passé composé'
+      : tags.has('past') ? 'Passé' : tags.has('present') ? 'Présent' : group.tense.replaceAll(' · ', ' — ')
+    const order = tags.has('present') ? 10
+      : tags.has('imperfect') || tags.has('pluperfect') ? 20
+      : tags.has('past') || tags.has('anterior') ? 30
+      : tags.has('future') ? 40 : 50
+    const section = sections.get(mood) ?? { mood, groups: [] }
+    section.groups.push({ ...group, label, order })
+    sections.set(mood, section)
+  }
+  const moodOrder = ['Indicative', 'Subjunctive', 'Conditional', 'Imperative', 'Other forms']
+  return [...sections.values()]
+    .map(section => ({ ...section, groups: section.groups.sort((a, b) => a.order - b.order || a.label.localeCompare(b.label)) }))
+    .sort((a, b) => moodOrder.indexOf(a.mood) - moodOrder.indexOf(b.mood))
 }
 
 async function requestJson<T>(path: string, body: unknown): Promise<T> {
@@ -220,7 +297,14 @@ function loadPreferences(): Preferences {
     return {
       ...DEFAULT_PREFERENCES,
       ...parsed,
-      visibility: { ...DEFAULT_VISIBILITY, ...parsed.visibility },
+      visibility: Object.fromEntries(
+        (Object.keys(DEFAULT_VISIBILITY) as SectionKey[]).map(key => [
+          key,
+          typeof parsed.visibility?.[key] === 'boolean'
+            ? parsed.visibility[key]
+            : DEFAULT_VISIBILITY[key],
+        ]),
+      ) as VisibilitySettings,
     }
   } catch {
     return DEFAULT_PREFERENCES
@@ -235,7 +319,6 @@ function App() {
   const [translation, setTranslation] = useState<TranslationResponse | null>(null)
   const [entries, setEntries] = useState<DictionaryEntry[]>([])
   const [selectedEntryId, setSelectedEntryId] = useState<string | null>(null)
-  const [selectedTense, setSelectedTense] = useState('')
   const [speed, setSpeed] = useState<PlaybackSpeed>('1.0x')
   const [playingKey, setPlayingKey] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
@@ -251,10 +334,7 @@ function App() {
     [entries, selectedEntryId],
   )
 
-  const selectedConjugation = useMemo(() => {
-    const groups = selectedEntry?.verb?.groups ?? []
-    return groups.find(group => group.tense === selectedTense) ?? groups[0] ?? null
-  }, [selectedEntry, selectedTense])
+  const conjugationSections = useMemo(() => organizeConjugations(selectedEntry), [selectedEntry])
 
   useEffect(() => {
     try {
@@ -263,11 +343,6 @@ function App() {
       // The interface still works when browser storage is unavailable.
     }
   }, [preferences])
-
-  useEffect(() => {
-    const firstTense = selectedEntry?.verb?.groups[0]?.tense ?? ''
-    setSelectedTense(firstTense)
-  }, [selectedEntryId, selectedEntry])
 
   useEffect(() => () => window.speechSynthesis.cancel(), [])
 
@@ -705,129 +780,32 @@ function App() {
                     </button>
                   </header>
 
-                  {preferences.visibility.definitions && (
-                    <DictionarySection title="Definition" className="definition-section">
-                      <ol className="definition-list">
-                        {selectedEntry.definitions.map((definition, index) => (
-                          <li key={`${definition.meaning}-${index}`}>
-                            <div>
-                              <p>{definition.meaning}</p>
-                              {definition.translation && <p className="definition-translation">{definition.translation}</p>}
-                            </div>
-                            {definition.register && <span className="register-label">{definition.register}</span>}
-                          </li>
-                        ))}
-                      </ol>
+                  <DictionaryMeanings
+                    entry={selectedEntry}
+                    visibility={preferences.visibility}
+                    playingKey={playingKey}
+                    onSpeak={(sentence, key) => speak(sentence, key)}
+                  />
+
+                  {preferences.visibility.conjugation && selectedEntry.verb && (
+                    <DictionarySection title="Conjugation" className="conjugation-section">
+                      {conjugationSections.length > 0 ? (
+                        <ConjugationGrid
+                          entry={selectedEntry}
+                          sections={conjugationSections}
+                          playingKey={playingKey}
+                          onSpeak={(text, playbackKey) => speak(text, playbackKey, sourceLanguage)}
+                        />
+                      ) : <p className="dictionary-empty">No conjugated forms with person information are available.</p>}
                     </DictionarySection>
                   )}
 
                   {preferences.visibility.etymology && selectedEntry.etymology && (
-                    <DictionarySection title="Etymology">
+                    <DictionarySection title="Word origin">
                       <p className="etymology-copy">{selectedEntry.etymology}</p>
                     </DictionarySection>
                   )}
 
-                  {preferences.visibility.examples && selectedEntry.examples.length > 0 && (
-                    <DictionarySection title="Examples">
-                      <div className="example-list">
-                        {selectedEntry.examples.map((example, index) => {
-                          const key = `example-${selectedEntry.id}-${index}`
-                          return (
-                            <div className="example-row" key={key}>
-                              <button className="small-icon-button" type="button" onClick={() => speak(example.sentence, key)} aria-label="Play example">
-                                {playingKey === key ? <Pause size={15} /> : <Volume2 size={15} />}
-                              </button>
-                              <div>
-                                <p>{example.sentence}</p>
-                                <p>{example.translation}</p>
-                              </div>
-                            </div>
-                          )
-                        })}
-                      </div>
-                    </DictionarySection>
-                  )}
-
-                  {preferences.visibility.usage && selectedEntry.usage.length > 0 && (
-                    <DictionarySection title="Usage and grammar">
-                      <dl className="usage-grid">
-                        {selectedEntry.usage.map(item => (
-                          <div key={`${item.label}-${item.value}`}>
-                            <dt>{item.label}</dt>
-                            <dd>{item.value}</dd>
-                          </div>
-                        ))}
-                      </dl>
-                    </DictionarySection>
-                  )}
-
-                  {preferences.visibility.relatedForms && selectedEntry.related_forms.length > 0 && (
-                    <DictionarySection title="Related forms">
-                      <div className="related-list">
-                        {selectedEntry.related_forms.map((form, index) => {
-                          const key = `related-${index}`
-                          return (
-                            <button className="related-chip" type="button" key={`${form.word}-${index}`} onClick={() => speak(form.word, key)}>
-                              <span><strong>{form.word}</strong><small>{partOfSpeechLabel(form.part_of_speech)}</small></span>
-                              {preferences.visibility.wordIpa && form.ipa && <em>{form.ipa}</em>}
-                              <Volume2 size={14} />
-                            </button>
-                          )
-                        })}
-                      </div>
-                    </DictionarySection>
-                  )}
-
-                  {preferences.visibility.conjugation && selectedEntry.verb && (
-                    <DictionarySection title="Conjugation" className="conjugation-section">
-                      <div className="verb-summary">
-                        {selectedEntry.verb.regularity && <span>{selectedEntry.verb.regularity}</span>}
-                        {selectedEntry.verb.auxiliary && <span>Auxiliary: {selectedEntry.verb.auxiliary}</span>}
-                        {selectedEntry.verb.transitivity && <span>{selectedEntry.verb.transitivity}</span>}
-                        {selectedEntry.verb.present_participle && <span>Present participle: {selectedEntry.verb.present_participle}</span>}
-                        {selectedEntry.verb.past_participle && <span>Past participle: {selectedEntry.verb.past_participle}</span>}
-                      </div>
-
-                      <div className="tense-tabs" role="tablist" aria-label="Conjugation tenses">
-                        {selectedEntry.verb.groups.map(group => (
-                          <button
-                            className={group.tense === selectedConjugation?.tense ? 'active' : ''}
-                            type="button"
-                            role="tab"
-                            aria-selected={group.tense === selectedConjugation?.tense}
-                            key={group.tense}
-                            onClick={() => setSelectedTense(group.tense)}
-                          >
-                            {group.tense}
-                          </button>
-                        ))}
-                      </div>
-
-                      {selectedConjugation && (
-                        <div className="conjugation-table">
-                          <div className="conjugation-table-head">
-                            <span>Subject</span><span>Form</span><span>Example</span><span className="sr-only">Audio</span>
-                          </div>
-                          {selectedConjugation.forms.map((form, index) => {
-                            const key = `conjugation-${selectedConjugation.tense}-${index}`
-                            return (
-                              <div className="conjugation-row" key={`${form.subject}-${form.form}-${index}`}>
-                                <span className="conjugation-subject">{form.subject}</span>
-                                <span className="conjugation-form">
-                                  <strong>{form.form}</strong>
-                                  {preferences.visibility.wordIpa && form.ipa && <small>{form.ipa}</small>}
-                                </span>
-                                <span className="conjugation-example"><strong>{form.example}</strong><small>{form.translation}</small></span>
-                                <button className="small-icon-button" type="button" onClick={() => speak(form.form, key)} aria-label={`Play ${form.form}`}>
-                                  {playingKey === key ? <Pause size={15} /> : <Volume2 size={15} />}
-                                </button>
-                              </div>
-                            )
-                          })}
-                        </div>
-                      )}
-                    </DictionarySection>
-                  )}
                 </>
               )}
             </article>
@@ -900,6 +878,149 @@ function App() {
           </aside>
         </div>
       )}
+    </div>
+  )
+}
+
+function DictionaryMeanings({ entry, visibility, playingKey, onSpeak }: {
+  entry: DictionaryEntry
+  visibility: VisibilitySettings
+  playingKey: string | null
+  onSpeak: (sentence: string, key: string) => void
+}) {
+  const definitions = entry.definitions ?? []
+  const linkedSentences = new Set(definitions.flatMap(item => item.examples ?? []).map(item => item.sentence))
+  const sharedExamples = (entry.examples ?? []).filter(item => !linkedSentences.has(item.sentence))
+  // The first three follow source order; this is not a frequency classification.
+  const meaningGroups = [
+    { title: 'Meanings', items: definitions.slice(0, 3), offset: 0 },
+    { title: 'More meanings', items: definitions.slice(3), offset: 3 },
+  ]
+  const renderExamples = (examples: Example[], prefix: string) => (
+    <div className="sense-examples">
+      {examples.map((example, index) => {
+        const key = `${entry.id}-${prefix}-${index}`
+        return (
+          <div className="sense-example" key={key}>
+            <button className="small-icon-button" type="button" onClick={() => onSpeak(example.sentence, key)} aria-label={`Play example: ${example.sentence}`}>
+              {playingKey === key ? <Pause size={14} /> : <Volume2 size={14} />}
+            </button>
+            <div>
+              <p lang={entry.language}>{example.sentence}</p>
+              {example.translation && <p className="sense-example-translation">{example.translation}</p>}
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+
+  return (
+    <>
+      {(visibility.definitions || visibility.examples) && (
+        <div className={`meaning-layout ${visibility.definitions && visibility.examples && sharedExamples.length ? 'with-examples' : ''}`}>
+          <div className="meaning-groups">
+            {meaningGroups.map(group => group.items.length > 0 &&
+              (visibility.definitions || group.items.some(item => item.examples?.length)) && (
+              <DictionarySection key={group.title} title={group.title} className="meaning-section">
+                <ol className="sense-list" start={group.offset + 1}>
+                  {group.items.map((definition, index) => (
+                    <li className="sense-row" key={`${group.offset + index}-${definition.meaning}`}>
+                      {visibility.definitions && (
+                        <div className="sense-definition">
+                          <span className="sense-number">{String(group.offset + index + 1).padStart(2, '0')}</span>
+                          <div>
+                            {definition.register && <span className="sense-register">{definition.register}</span>}
+                            <p>{definition.meaning}</p>
+                            {definition.translation && <p className="sense-translation">{definition.translation}</p>}
+                          </div>
+                        </div>
+                      )}
+                      {visibility.examples && definition.examples?.length
+                        ? renderExamples(definition.examples, `sense-${group.offset + index}`) : null}
+                    </li>
+                  ))}
+                </ol>
+              </DictionarySection>
+            ))}
+            {visibility.definitions && !definitions.length && (
+              <p className="dictionary-empty">No definitions are available for this entry.</p>
+            )}
+          </div>
+          {visibility.examples && sharedExamples.length > 0 && (
+            <aside className="word-examples" aria-label="Examples for this word">
+              <h3>Examples in context</h3>
+              <p className="examples-note">Examples for this word</p>
+              {renderExamples(sharedExamples, 'word')}
+            </aside>
+          )}
+        </div>
+      )}
+
+    </>
+  )
+}
+
+function ConjugationGrid({ entry, sections, playingKey, onSpeak }: {
+  entry: DictionaryEntry
+  sections: ConjugationSection[]
+  playingKey: string | null
+  onSpeak: (text: string, key: string) => void
+}) {
+  const subjects = subjectNames(entry.language)
+  const nonFinite = [
+    { label: 'Infinitive', form: entry.lemma, ipa: entry.ipa },
+    { label: 'Present participle', form: entry.verb?.present_participle, ipa: entry.verb?.present_participle_ipa },
+    { label: 'Past participle', form: entry.verb?.past_participle, ipa: entry.verb?.past_participle_ipa },
+  ].filter((item): item is { label: string; form: string; ipa: string | undefined } => Boolean(item.form))
+
+  return (
+    <div className="conjugation-scroll">
+      {nonFinite.length > 0 && <dl className="nonfinite-forms">
+        {nonFinite.map(item => {
+          const playbackKey = `conjugation-${entry.id}-${item.label}`
+          return <div key={item.label}>
+            <dt>{item.label}</dt>
+            <dd><button className="conjugation-form-button" type="button" onClick={() => onSpeak(item.form, playbackKey)} aria-label={`Play ${item.form}`}>
+              <span>{item.form}</span>
+              {item.ipa && <small>{item.ipa}</small>}
+              {playingKey === playbackKey ? <Pause size={13} /> : <Volume2 size={13} />}
+            </button></dd>
+          </div>
+        })}
+      </dl>}
+      <table className="conjugation-table">
+        <caption>{entry.lemma} — conjugation</caption>
+        <thead>
+          <tr><th rowSpan={2} scope="col">Mood</th><th rowSpan={2} scope="col">Tense</th><th colSpan={3} scope="colgroup">Singular</th><th colSpan={3} scope="colgroup">Plural</th></tr>
+          <tr>{subjects.map(subject => <th scope="col" key={subject}>{subject}</th>)}</tr>
+        </thead>
+        <tbody>
+          {sections.flatMap(section => section.groups.map((group, index) => {
+            const forms = new Map(group.forms.map(form => [form.subject, form]))
+            return <tr key={`${section.mood}-${group.tense}`}>
+              {index === 0 && <th className="conjugation-mood" rowSpan={section.groups.length} scope="rowgroup">{section.mood}</th>}
+              <th className="conjugation-tense" scope="row">{group.label}</th>
+              {subjects.map(subject => {
+                const form = forms.get(subject)
+                const playbackKey = `conjugation-${entry.id}-${group.tense}-${subject}`
+                return <td key={subject}>
+                  {form ? <button
+                    className="conjugation-form-button"
+                    type="button"
+                    onClick={() => onSpeak(form.form, playbackKey)}
+                    aria-label={`Play ${form.form}`}
+                  >
+                    <span>{form.form}</span>
+                    {form.ipa && <small>{form.ipa}</small>}
+                    {playingKey === playbackKey ? <Pause size={13} /> : <Volume2 size={13} />}
+                  </button> : '—'}
+                </td>
+              })}
+            </tr>
+          }))}
+        </tbody>
+      </table>
     </div>
   )
 }
