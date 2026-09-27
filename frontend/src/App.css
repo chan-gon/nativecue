@@ -802,7 +802,6 @@ input:focus-visible {
 }
 
 .meaning-layout { display: grid; min-width: 0; border-bottom: 1px solid var(--line-soft); }
-.meaning-layout.with-examples { grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); }
 .meaning-groups { min-width: 0; }
 .meaning-section { padding: 0; border: 0; }
 .meaning-section > h3,
@@ -824,7 +823,7 @@ input:focus-visible {
 .sense-definition p, .sense-example p { margin: 0; overflow-wrap: anywhere; }
 .sense-register { display: block; margin-bottom: 4px; color: #78766c; font-size: .72rem; font-style: italic; }
 .sense-translation { margin-top: 5px !important; color: #825038; font-size: .88em; }
-.word-examples { min-width: 0; padding: 16px 20px; border-left: 1px solid var(--line-soft); background: rgba(252, 250, 245, .7); }
+.word-examples { min-width: 0; padding: 16px 20px; border-top: 1px solid var(--line-soft); background: rgba(252, 250, 245, .7); }
 .word-examples h3 { margin: 0; color: #57574f; font-size: .75rem; letter-spacing: .03em; }
 .examples-note { margin: 3px 0 15px; color: #858178; font-size: .7rem; }
 .sense-examples { display: grid; gap: 12px; }
@@ -1291,9 +1290,39 @@ input[type='range'] {
 }
 
 @media (max-width: 720px) {
-  .meaning-layout.with-examples { grid-template-columns: 1fr; }
   .word-examples { border-left: 0; border-top: 1px solid var(--line-soft); }
   .meaning-section, .conjugation-section { padding: 0; }
   .sense-row, .word-examples { padding: 15px 17px; }
   .conjugation-table th, .conjugation-table td { padding: 10px 17px; }
 }
+
+/* Word details */
+.word-origin-button {
+  flex-shrink: 0;
+  padding: 10px 14px;
+  border: 1px solid #e9bca9;
+  border-radius: 999px;
+  background: #fff4ee;
+  color: #825038;
+  font-size: .7rem;
+  font-weight: 750;
+  cursor: pointer;
+}
+.word-origin-button:hover { background: #fbe5d8; }
+.word-origin-dialog {
+  width: min(600px, calc(100vw - 32px));
+  max-height: 80vh;
+  padding: 0;
+  border: 1px solid var(--line, #ddd);
+  border-radius: 16px;
+  background: #fffdf8;
+  color: var(--app-text, #333);
+  overflow-y: auto;
+  box-shadow: 0 24px 80px #0003;
+}
+.word-origin-dialog::backdrop { background: #0007; }
+.word-origin-content { padding: 24px; }
+.word-origin-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 20px; }
+.word-origin-heading h3 { margin: 0; font-size: 1rem; }
+.word-origin-dialog .etymology-copy { white-space: pre-line; overflow-wrap: anywhere; }
+.word-examples-scroll { max-height: 320px; overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; }

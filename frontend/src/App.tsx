@@ -251,7 +251,7 @@ function organizeConjugations(entry: DictionaryEntry | null): ConjugationSection
       : tags.has('subjunctive') ? 'Subjunctive'
       : tags.has('conditional') ? 'Conditional'
       : tags.has('imperative') ? 'Imperative' : 'Other forms'
-    const label = tags.has('anterior') ? 'Passé antérieur'
+    const frenchLabel = tags.has('anterior') ? 'Passé antérieur'
       : tags.has('historic') && tags.has('past') ? 'Passé simple'
       : tags.has('pluperfect') ? 'Plus-que-parfait'
       : tags.has('future') && tags.has('perfect') ? 'Futur antérieur'
@@ -260,6 +260,15 @@ function organizeConjugations(entry: DictionaryEntry | null): ConjugationSection
       : tags.has('future') ? 'Futur simple'
       : tags.has('perfect') && tags.has('present') ? 'Passé composé'
       : tags.has('past') ? 'Passé' : tags.has('present') ? 'Présent' : group.tense.replaceAll(' · ', ' — ')
+    const englishLabel = tags.has('pluperfect') ? 'Past perfect'
+      : tags.has('future') && tags.has('perfect') ? 'Future perfect'
+      : tags.has('past') && tags.has('perfect') ? 'Past perfect'
+      : tags.has('present') && tags.has('perfect') ? 'Present perfect'
+      : tags.has('future') ? 'Future'
+      : tags.has('past') ? 'Past'
+      : tags.has('present') ? 'Present'
+      : group.tense.replaceAll(' · ', ' — ')
+    const label = entry?.language.toLowerCase() === 'en' ? englishLabel : frenchLabel
     const order = tags.has('present') ? 10
       : tags.has('imperfect') || tags.has('pluperfect') ? 20
       : tags.has('past') || tags.has('anterior') ? 30
@@ -767,6 +776,9 @@ function App() {
                       <div className="entry-title-row">
                         <h2>{selectedEntry.lemma}</h2>
                         <span className="pos-badge">{partOfSpeechLabel(selectedEntry.part_of_speech)}</span>
+                        <button className="round-audio-button" type="button" onClick={() => speak(selectedEntry.lemma, `entry-${selectedEntry.id}`)} aria-label={`Play ${selectedEntry.lemma}`}>
+                          {playingKey === `entry-${selectedEntry.id}` ? <Pause size={19} /> : <Volume2 size={19} />}
+                        </button>
                         {selectedEntry.gender && <span className="grammar-badge">{selectedEntry.gender}</span>}
                       </div>
                       <div className="entry-meta">
@@ -775,9 +787,9 @@ function App() {
                         {selectedEntry.inflection && <span>{selectedEntry.inflection}</span>}
                       </div>
                     </div>
-                    <button className="round-audio-button" type="button" onClick={() => speak(selectedEntry.lemma, `entry-${selectedEntry.id}`)} aria-label={`Play ${selectedEntry.lemma}`}>
-                      {playingKey === `entry-${selectedEntry.id}` ? <Pause size={19} /> : <Volume2 size={19} />}
-                    </button>
+                    {preferences.visibility.etymology && selectedEntry.etymology && (
+                      <WordOrigin key={selectedEntry.id} entry={selectedEntry} />
+                    )}
                   </header>
 
                   <DictionaryMeanings
@@ -800,11 +812,6 @@ function App() {
                     </DictionarySection>
                   )}
 
-                  {preferences.visibility.etymology && selectedEntry.etymology && (
-                    <DictionarySection title="Word origin">
-                      <p className="etymology-copy">{selectedEntry.etymology}</p>
-                    </DictionarySection>
-                  )}
 
                 </>
               )}
@@ -882,6 +889,31 @@ function App() {
   )
 }
 
+function WordOrigin({ entry }: { entry: DictionaryEntry }) {
+  const dialogRef = useRef<HTMLDialogElement>(null)
+
+  return (
+    <>
+      <button className="word-origin-button" type="button" aria-haspopup="dialog" onClick={() => dialogRef.current?.showModal()}>
+        WORD ORIGIN
+      </button>
+      <dialog className="word-origin-dialog" ref={dialogRef} aria-labelledby="word-origin-title" onClick={event => {
+        if (event.target === event.currentTarget) dialogRef.current?.close()
+      }}>
+        <div className="word-origin-content">
+          <div className="word-origin-heading">
+            <h3 id="word-origin-title">Word origin — {entry.lemma}</h3>
+            <button className="small-icon-button" type="button" autoFocus onClick={() => dialogRef.current?.close()} aria-label="Close word origin">
+              <X size={18} />
+            </button>
+          </div>
+          <p className="etymology-copy">{entry.etymology}</p>
+        </div>
+      </dialog>
+    </>
+  )
+}
+
 function DictionaryMeanings({ entry, visibility, playingKey, onSpeak }: {
   entry: DictionaryEntry
   visibility: VisibilitySettings
@@ -891,10 +923,8 @@ function DictionaryMeanings({ entry, visibility, playingKey, onSpeak }: {
   const definitions = entry.definitions ?? []
   const linkedSentences = new Set(definitions.flatMap(item => item.examples ?? []).map(item => item.sentence))
   const sharedExamples = (entry.examples ?? []).filter(item => !linkedSentences.has(item.sentence))
-  // The first three follow source order; this is not a frequency classification.
   const meaningGroups = [
-    { title: 'Meanings', items: definitions.slice(0, 3), offset: 0 },
-    { title: 'More meanings', items: definitions.slice(3), offset: 3 },
+    { title: 'Meanings', items: definitions, offset: 0 },
   ]
   const renderExamples = (examples: Example[], prefix: string) => (
     <div className="sense-examples">
@@ -918,7 +948,7 @@ function DictionaryMeanings({ entry, visibility, playingKey, onSpeak }: {
   return (
     <>
       {(visibility.definitions || visibility.examples) && (
-        <div className={`meaning-layout ${visibility.definitions && visibility.examples && sharedExamples.length ? 'with-examples' : ''}`}>
+        <div className="meaning-layout">
           <div className="meaning-groups">
             {meaningGroups.map(group => group.items.length > 0 &&
               (visibility.definitions || group.items.some(item => item.examples?.length)) && (
@@ -951,7 +981,9 @@ function DictionaryMeanings({ entry, visibility, playingKey, onSpeak }: {
             <aside className="word-examples" aria-label="Examples for this word">
               <h3>Examples in context</h3>
               <p className="examples-note">Examples for this word</p>
-              {renderExamples(sharedExamples, 'word')}
+              <div className="word-examples-scroll" role="region" aria-label="Scrollable examples" tabIndex={0}>
+                {renderExamples(sharedExamples, 'word')}
+              </div>
             </aside>
           )}
         </div>
